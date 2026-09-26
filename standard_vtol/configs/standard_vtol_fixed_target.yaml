@@ -1,0 +1,387 @@
+# Public standard_vtol fixed-target mission.
+# Every reset starts from the same ground pose and flies to the same landing
+# point. Random target sampling, curriculum starts, sensor noise, wind, and
+# dynamics randomization are deliberately disabled below.
+# Local navigation coordinates are north/east/altitude-up in metres.
+task_name: vtol_mission
+model: gazebo
+
+# 50 Hz policy and 250 Hz contact physics, matching Gazebo Classic worlds.
+dt: 0.02
+ground_physics_substeps: 5
+solver: euler
+max_steps: 3500
+num_agents: 1
+num_states: 12
+num_controls: 8
+num_actions: 8
+num_observation: 45
+use_privileged_critic: true
+num_critic_observation: 64
+airspeed: 0.0
+vec_auto_reset_on_done: true
+
+# standard_vtol rigid-body and actuator parameters.
+gazebo_mass: 5.0
+gazebo_Jx: 0.477708333333
+gazebo_Jy: 0.341666666667
+gazebo_Jz: 0.811041666667
+gazebo_g: 9.807
+gazebo_air_density: 1.2041
+gazebo_motor_tau_up: 0.0125
+gazebo_motor_tau_down: 0.025
+gazebo_rotor_drag_coefficient: 0.000106428
+gazebo_rolling_moment_coefficient: 0.000001
+action_is_gazebo_control: false
+enable_action_filter: true
+# The policy sample remains the PPO random variable; these filters smooth the
+# command actually sent to the actuator mapper (and therefore also the HIL
+# command).  Gazebo already has motor lag, so keep lift/pusher commands
+# responsive and apply the ~46 ms discrete (alpha=0.35) command filter to surfaces,
+# which otherwise have no actuator lag in the shadow model.
+action_filter_alpha: 1.0
+action_filter_surface_alpha: 0.35
+# During transition/back-transition the learned surface timing is important
+# for route capture; smooth surfaces only in fixed-wing cruise, where they are
+# the dominant source of high-frequency command jitter.
+action_filter_surface_fixed_wing_only: true
+# Hard normalized-command slew limits, in action units per 20 ms control step.
+# Lift rotors and the pusher get slightly more authority than the control
+# surfaces so takeoff/transition response is not excessively delayed.
+enable_action_slew_rate: true
+action_slew_rate: [2.0, 2.0, 2.0, 2.0, 2.0, 0.08, 0.08, 0.08]
+
+# Four-point approximation of the standard_vtol collision box.
+ground_contact_enable: true
+ground_height: 0.0
+ground_contact_points:
+  - [ 0.275,  1.072, 0.095]
+  - [ 0.275, -1.072, 0.095]
+  - [-0.275,  1.072, 0.095]
+  - [-0.275, -1.072, 0.095]
+ground_contact_stiffness: 10000.0
+# Stable at the 4 ms semi-implicit contact step, including roll/pitch contact modes.
+ground_contact_damping: 50.0
+ground_contact_friction: 0.7
+ground_contact_slip_speed: 0.05
+ground_contact_max_normal_force: 5000.0
+spawn_mode: ground
+ground_spawn_static_equilibrium: true
+ground_spawn_clearance: 0.0
+ground_init_roll_range: 0.0
+ground_init_pitch_range: 0.0
+ground_init_vel_range: 0.0
+ground_init_omega_range: 0.0
+
+# GPS sample-and-hold signal consumed by the mission policy.
+gps_enable: false
+gps_update_rate_hz: 10.0
+gps_horizontal_std: 0.0
+gps_vertical_std: 0.0
+mission_gps_age_norm: 0.20
+
+# Mission geometry and phase gates. Change mission_landing_n/e to move the pad.
+mission_start_n: 0.0
+mission_start_e: 0.0
+mission_landing_n: 300.0
+mission_landing_e: 0.0
+mission_randomize_target: false
+mission_curriculum_enable: false
+mission_landing_altitude: 0.095
+mission_landing_heading: 0.0
+mission_cruise_altitude: 25.0
+mission_landing_hover_altitude: 8.0
+mission_takeoff_clearance: 1.0
+# Training gate: begin braking early and hand over to vertical flight only
+# after the low-speed capture envelope has been held continuously.
+mission_approach_distance: 170.0
+mission_descent_capture_radius: 45.0
+mission_rotor_climb_speed: 2.0
+mission_transition_complete_speed: 11.0
+mission_cruise_speed: 14.0
+mission_approach_speed: 5.0
+# Limit forward pusher during mode conversion.  The ceiling tapers as speed
+# approaches 18 m/s, leaving full pusher authority to wing-borne cruise.
+mission_transition_pusher_max_action: -0.25
+mission_transition_pusher_speed_limit: 18.0
+mission_transition_pusher_high_speed_action: -0.65
+# Keep cruise thrust below half throttle while the policy learns pitch and
+# altitude regulation; the cap is released by the reverse-transition gate.
+mission_fixed_wing_pusher_max_action: -0.50
+mission_backtransition_complete_speed: 6.0
+mission_backtransition_capture_hold_steps: 3
+mission_backtransition_max_receding_speed: 1.0
+mission_backtransition_max_vertical_speed: 2.0
+# Do not switch to vertical landing while roll/pitch rates are still large.
+mission_descent_capture_max_roll_rate: 0.75
+mission_descent_capture_max_pitch_rate: 0.75
+# Deprecated alias retained for older experiment scripts.
+mission_backtransition_max_sink_speed: 1.5
+mission_phase_min_steps: [10, 25, 40, 40, 25, 0]
+# Flight-mode manager: pusher off and surfaces neutral in vertical phases.
+mission_gate_vertical_actuators: true
+# Use equal low-power lift trim after the aircraft becomes wing-borne.  The
+# simplified wing model can otherwise stall during the learned transition;
+# equal trim adds no roll/yaw authority and does not replace PPO surfaces.
+mission_gate_fixed_wing_lift_rotors: true
+mission_fixed_wing_lift_action: -0.25
+mission_fixed_wing_lift_recovery_action: 0.05
+mission_fixed_wing_lift_recovery_altitude: 15.0
+# At the 11 m/s fixed-wing handover, retain extra rotor lift and taper toward
+# the cruise trim as airspeed builds.  This avoids the low-speed altitude drop
+# observed when the wing is not yet fully carrying the vehicle.
+mission_fixed_wing_lift_low_speed_action: -0.05
+mission_fixed_wing_lift_speed_start: 11.0
+mission_fixed_wing_lift_speed_end: 18.0
+# Reduce pusher thrust automatically when fixed-wing altitude is low.  This
+# gives the lift rotors enough authority to arrest a descent before the hard
+# cruise-altitude boundary is reached.
+mission_fixed_wing_pusher_recovery_action: -0.90
+mission_fixed_wing_pusher_recovery_altitude: 10.0
+# Blend a small attitude-recovery command into the learned surfaces only when
+# bank/pitch becomes unsafe.  The learned controller remains fully active in
+# the normal envelope.
+mission_fixed_wing_stabilizer_enable: true
+mission_fixed_wing_stabilizer_start_deg: 15.0
+mission_fixed_wing_stabilizer_full_deg: 35.0
+mission_fixed_wing_stabilizer_roll_gain: 0.90
+mission_fixed_wing_stabilizer_roll_rate_gain: 0.08
+mission_fixed_wing_stabilizer_pitch_gain: 0.70
+mission_fixed_wing_stabilizer_pitch_rate_gain: 0.08
+mission_fixed_wing_stabilizer_diff_limit: 0.45
+mission_fixed_wing_stabilizer_common_limit: 0.35
+# Fixed-wing lateral-navigation recovery. The trim is blended with the
+# learned elevon differential only when the vehicle leaves the route corridor.
+mission_fixed_wing_nav_enable: true
+mission_fixed_wing_nav_heading_gain: 1.10
+mission_fixed_wing_nav_cross_track_gain: 0.055
+mission_fixed_wing_nav_lookahead: 25.0
+mission_fixed_wing_nav_roll_limit_deg: 22.0
+# Reverse-transition lateral recovery. The elevon trim uses the same standard_vtol
+# sign convention as fixed-wing navigation, with a tighter blend envelope while
+# rotors re-engage.
+mission_backtransition_nav_enable: true
+mission_backtransition_nav_heading_gain: 0.35
+mission_backtransition_nav_cross_track_gain: 0.040
+mission_backtransition_nav_lookahead: 35.0
+mission_backtransition_nav_roll_limit_deg: 12.0
+mission_backtransition_nav_diff_limit: 0.12
+# Low-authority attitude recovery during reverse transition. This only blends
+# in near the extreme-angle boundary; learned surfaces remain active near trim.
+mission_backtransition_stabilizer_enable: true
+mission_backtransition_stabilizer_start_deg: 12.0
+mission_backtransition_stabilizer_full_deg: 32.0
+mission_backtransition_stabilizer_roll_gain: 0.28
+mission_backtransition_stabilizer_roll_rate_gain: 0.04
+mission_backtransition_stabilizer_pitch_gain: 0.24
+mission_backtransition_stabilizer_pitch_rate_gain: 0.04
+mission_backtransition_stabilizer_diff_limit: 0.12
+mission_backtransition_stabilizer_common_limit: 0.12
+# Smoothly cap the forward pusher from the 170 m transition point to zero at
+# the 30 m capture boundary. PPO still controls it below this upper bound.
+mission_gate_backtransition_pusher: true
+mission_backtransition_pusher_max_fraction: 0.15
+# Keep reverse-transition elevator/elevon commands bounded so a noisy policy
+# cannot pitch the aircraft into the 60-degree termination limit.
+mission_backtransition_surface_action_scale: 0.35
+mission_backtransition_lift_action_high: -0.25
+mission_backtransition_lift_action_low: -0.02
+# Mass-aware reverse-transition collective controller. The policy still
+# controls surfaces, while rotor lift follows the altitude corridor.
+mission_backtransition_altitude_gain: 0.06
+mission_backtransition_velocity_gain: 0.16
+mission_backtransition_target_sink_speed: 0.80
+# Distance-ramped parasitic drag used as a reverse-transition air brake.
+# It is zero outside BACK_TRANSITION and reaches full strength at the
+# vertical-capture boundary.
+mission_backtransition_extra_drag_coefficient: 0.10
+mission_backtransition_extra_drag_start_distance: 120.0
+# Blend fixed-wing aerodynamic forces/moments while rotors re-engage.
+# Keep enough wing drag during reverse transition to brake before the
+# vertical-capture gate.  Lift rotors are already carrying the vehicle, so
+# restoring aerodynamic loads here does not rely on fixed-wing lift for
+# altitude control.
+mission_backtransition_aero_scale: 1.00
+# Fixed-wing loads are disabled while rotors carry the aircraft and surfaces
+# are neutral.  They are restored progressively during forward transition.
+mission_rotor_climb_aero_scale: 0.0
+mission_transition_aero_scale: 0.25
+# Alpha/beta are undefined near hover; require body-forward airflow first.
+mission_aero_envelope_min_forward_speed: 4.0
+# In early and reverse transition the lift rotors carry/recover the aircraft.
+# Enable the hard wing alpha/beta envelope only in wing-borne fixed-wing mode.
+mission_transition_aero_envelope_min_forward_speed: 11.0
+# The simplified wing model has a short alpha transient at the forward-mode
+# handover.  Let the attitude stabilizer and pusher build airflow before the
+# hard alpha/beta termination is enabled.
+mission_fixed_wing_aero_grace_steps: 25
+# Preserve collective thrust while limiting unsafe independent rotor exploration.
+# Keep independent rotor exploration small while taking off/landing; the
+# collective channel remains fully learnable and prevents random tip-over.
+mission_vertical_lift_differential_scale: 0.10
+# Keep the aircraft level while climbing vertically.  Surfaces are neutral in
+# this phase, so differential lift is not useful until forward transition.
+mission_rotor_climb_lift_differential_scale: 0.0
+# Gazebo contact and motor transients can create a small attitude impulse while
+# the aircraft is rotor-borne.  Blend this bounded PD correction into the lift
+# rotor differential; PPO retains collective authority and all other phases.
+mission_rotor_climb_stabilizer_enable: true
+mission_rotor_climb_stabilizer_roll_gain: 0.85
+mission_rotor_climb_stabilizer_roll_rate_gain: 0.12
+mission_rotor_climb_stabilizer_pitch_gain: 0.85
+mission_rotor_climb_stabilizer_pitch_rate_gain: 0.12
+mission_rotor_climb_stabilizer_diff_limit: 0.20
+# Equalize the four lift rotors while on/near the ground; re-enable the
+# configured differential scale after the pusher-enable altitude.
+mission_ground_lift_differential_scale: 0.0
+# Keep the pusher off for the entire rotor climb.  The phase gate to
+# TRANSITION is altitude-based; forward speed is built only after the mode
+# change, where the aircraft has surface authority.
+mission_rotor_climb_pusher_enable_altitude: 30.0
+# Minimum normalized pusher command after the enable altitude. This supplies
+# enough forward acceleration for the 11 m/s transition gate without taking
+# control of the remaining actuator authority away from PPO.
+mission_rotor_climb_pusher_min_action: -0.65
+# Upper bound for the pusher during rotor climb.  In normalized [-1, 1]
+# action space this corresponds to roughly 1.4 krad/s, preventing the
+# half-throttle command from over-accelerating the still-vertical airframe.
+mission_rotor_climb_pusher_max_action: -0.50
+# Small fixed roll trim for the pusher reaction torque; policy differential
+# lift remains disabled in rotor climb.
+mission_rotor_climb_pusher_roll_trim_scale: 0.01
+# Enter vertical mode while still inside a recoverable descent corridor.  This
+# is a mode-capture threshold, not the final touchdown success criterion.
+mission_descent_capture_altitude: 12.0
+mission_descent_capture_max_tilt_deg: 25.0
+
+# Every training environment starts on the ground and flies the complete mission.
+mission_curriculum_phase_weights: [0.30, 0.14, 0.14, 0.14, 0.14, 0.14]
+mission_curriculum_cross_track_std: 2.0
+mission_curriculum_heading_std_deg: 5.0
+
+# Safe-landing definition.
+mission_landing_radius: 3.0
+mission_landing_max_speed: 1.0
+mission_landing_max_sink_speed: 0.6
+mission_landing_max_tilt_deg: 12.0
+mission_landing_settle_steps: 15
+# Vertical-land controller: hover feed-forward is derived from current mass;
+# gains only correct altitude and vertical speed around that operating point.
+mission_vertical_landing_altitude_gain: 0.01
+mission_vertical_landing_velocity_gain: 0.12
+mission_vertical_landing_collective_limit: 0.20
+mission_vertical_landing_target_sink_speed: 0.50
+mission_vertical_landing_position_gain: 0.08
+mission_vertical_landing_horizontal_damping: 0.45
+mission_vertical_landing_max_accel: 2.5
+mission_vertical_landing_max_tilt_deg: 18.0
+mission_vertical_landing_lift_differential_scale: 0.03
+# Cascaded horizontal-position -> attitude -> angular-rate landing loop.
+mission_vertical_landing_roll_gain: 0.70
+mission_vertical_landing_pitch_gain: 0.70
+mission_vertical_landing_roll_rate_gain: 0.16
+mission_vertical_landing_pitch_rate_gain: 0.16
+mission_vertical_landing_diff_limit: 0.06
+mission_vertical_landing_yaw_rate_gain: 0.035
+mission_vertical_landing_yaw_diff_limit: 0.04
+
+# Safety envelope. Approaching these limits is penalized in the PPO reward;
+# crossing a hard limit remains a terminal failure with an event penalty.
+ground_crash_max_touchdown_speed: 1.5
+ground_crash_max_penetration: 0.05
+ground_crash_max_roll_deg: 45.0
+ground_crash_max_pitch_deg: 45.0
+ground_crash_force_factor: 20.0
+mission_max_cross_track: 50.0
+mission_route_margin: 30.0
+mission_max_altitude: 50.0
+mission_min_safe_cruise_altitude: 4.0
+max_velocity: 25.0
+# Transitional airspeed ceilings. The fixed-wing ceiling remains strict;
+# reverse transition gets a temporary larger envelope so the controller can
+# brake through the 25 m/s boundary instead of terminating on the first frame.
+mission_transition_max_velocity: 30.0
+mission_backtransition_max_velocity: 35.0
+max_pitch: 60.0
+max_roll: 60.0
+max_omega: 4.0
+max_omega_norm: 6.0
+min_alpha: -25.0
+max_alpha: 35.0
+min_beta: -25.0
+max_beta: 25.0
+# Standard_vtol can produce short transition thrust transients above 3.5 g;
+# reserve the hard overload termination for sustained >4.6 g events.
+acceleration_limit: 45.0
+# Extra margin for propulsion/wing force blending during mode conversion.
+mission_transition_acceleration_limit: 50.0
+mission_backtransition_acceleration_limit: 60.0
+overload_bad_done_persist_steps: 5
+termination_verbose: false
+
+# Reward: fast waypoint progress plus continuous safety margins.
+mission_w_progress: 4.0
+mission_w_altitude: 1.0
+mission_w_speed: 0.8
+mission_w_heading: 0.8
+mission_w_waypoint: 0.5
+mission_w_phase_bonus: 60.0
+mission_w_time: 0.03
+mission_w_attitude_safety: 0.8
+mission_w_rate_safety: 0.25
+mission_w_aero_safety: 0.5
+mission_w_sink_safety: 1.5
+mission_w_action_smooth: 0.15
+mission_w_mode_efficiency: 0.2
+# Reverse-transition shaping.  Tracking rewards are zero-centered, so these
+# terms provide the directional signal needed to brake and capture the pad.
+mission_w_backtransition_braking: 0.75
+mission_w_backtransition_overspeed: 0.40
+mission_w_backtransition_receding: 0.40
+mission_w_constraint_safety: 5.0
+mission_constraint_warning_fraction: 0.8
+mission_w_ground_wait: 1.0
+mission_ground_wait_grace_steps: 10
+mission_reward_altitude_sigma: 4.0
+mission_reward_speed_sigma: 3.0
+mission_reward_backtransition_speed_sigma: 2.0
+mission_reward_backtransition_potential_clip: 4.0
+mission_reward_shaping_gamma: 1.0
+mission_reward_vertical_speed_sigma: 0.75
+mission_reward_heading_sigma: 0.35
+mission_reward_waypoint_sigma: 12.0
+mission_reward_safe_tilt_deg: 25.0
+mission_reward_safe_rate: 1.5
+mission_reward_safe_alpha_deg: 18.0
+mission_reward_safe_beta_deg: 12.0
+mission_reward_safe_sink_speed: 1.0
+mission_reward_progress_clip: 2.0
+mission_success_bonus: 1200.0
+mission_failure_penalty: 750.0
+mission_timeout_penalty: 250.0
+
+# Observation normalizers and non-GPS sensor noise.
+mission_distance_norm: 300.0
+mission_altitude_norm: 25.0
+mission_speed_norm: 20.0
+mission_vertical_speed_norm: 8.0
+mission_rate_norm: 3.0
+enable_sensor_noise: false
+sensor_vel_std: 0.0
+sensor_airspeed_std: 0.0
+sensor_att_std: 0.0
+sensor_omega_std: 0.0
+
+# Explicitly disabled for this first training setup.
+enable_wind: false
+enable_dryden_turbulence: false
+dr_mass: 0.0
+dr_inertia: 0.0
+min_altitude: 2.0
+max_altitude: 8.0
+init_roll_range: 0.0
+init_pitch_range: 0.0
+init_yaw_range: 0.0
+init_vel_range: 0.0
+init_omega_range: 0.0
+color: Blue

@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.5">
+  <world name="standard_vtol_single">
+    <scene>
+      <ambient>0.65 0.68 0.72 1</ambient>
+      <background>0.88 0.90 0.93 1</background>
+      <shadows>true</shadows>
+      <grid>false</grid>
+      <origin_visual>false</origin_visual>
+    </scene>
+    <gui fullscreen="0">
+      <camera name="user_camera">
+        <pose>5 -6 12.000 0 0.47 2.27</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+    <physics name="default_physics" default="1" type="ode">
+      <gravity>0 0 -9.8066</gravity>
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+    <include>
+      <uri>model://standard_vtol_visual</uri>
+      <name>standard_vtol</name>
+      <pose>0.000 0.000 8.000 0 0 0.000000</pose>
+    </include>
+  </world>
+</sdf>

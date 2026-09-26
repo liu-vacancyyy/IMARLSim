@@ -1,0 +1,9 @@
+# Python 3.10+ / PyTorch 2.6+ are required by rsl-rl-lib 5.5.1.
+torch>=2.6.0
+rsl-rl-lib==5.5.1
+tensordict>=0.7.0
+torchdiffeq>=0.2.5
+numpy>=1.24
+PyYAML>=6.0
+gym==0.26.2
+tensorboard>=2.16
